@@ -125,7 +125,7 @@ if (-not (Test-Path $ConfigPath)) {
 # Paths with spaces must be quoted inside the binPath value.
 # ---------------------------------------------------------------------------
 
-$binPath = "`"$venvPython`" -m audio_sentinel --config `"$ConfigPath`""
+$binPath = '"' + $venvPython + '" -m audio_sentinel --config "' + $ConfigPath + '"'
 
 # ---------------------------------------------------------------------------
 # Remove existing service if present
