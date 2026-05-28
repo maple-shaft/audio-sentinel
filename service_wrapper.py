@@ -10,8 +10,10 @@ from __future__ import annotations
 
 import ctypes
 import ctypes.wintypes
+import datetime
 import os
 import sys
+import traceback
 
 # ---------------------------------------------------------------------------
 # Windows service API — types, structures, and constants
@@ -77,6 +79,25 @@ if _PROJECT_ROOT not in sys.path:
 # The import is deferred to inside _svc_main, after the first checkpoint.
 
 # ---------------------------------------------------------------------------
+# Early debug log — written before the sentinel logger exists.
+# Captures every step so a failure anywhere in startup is visible.
+# Delete or set _DEBUG_LOG = None to silence it once the service is stable.
+# ---------------------------------------------------------------------------
+
+_DEBUG_LOG = os.path.join(_PROJECT_ROOT, "logs", "service_debug.log")
+
+
+def _dbg(msg: str) -> None:
+    """Append a timestamped line to the debug log, silently ignoring I/O errors."""
+    try:
+        os.makedirs(os.path.dirname(_DEBUG_LOG), exist_ok=True)
+        with open(_DEBUG_LOG, "a", encoding="utf-8") as fh:
+            fh.write(f"{datetime.datetime.now().isoformat()} {msg}\n")
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------
 # Service state (module-level keeps ctypes callbacks alive for the GC)
 # ---------------------------------------------------------------------------
 
@@ -101,6 +122,7 @@ def _report_status(state: int, wait_hint: int = 0, checkpoint: int = 0) -> None:
 @_HandlerFn
 def _ctrl_handler(control: int) -> None:
     """Called by the SCM on any service control code (stop, interrogate, etc.)."""
+    _dbg(f"_ctrl_handler: control={control}")
     if control == SERVICE_CONTROL_STOP and _daemon is not None:
         _report_status(SERVICE_STOP_PENDING, wait_hint=5000)
         _daemon.stop()
@@ -111,30 +133,44 @@ def _svc_main(argc: int, argv) -> None:
     """Service entry point called by StartServiceCtrlDispatcher."""
     global _svc_handle, _daemon
 
-    _svc_handle = _advapi32.RegisterServiceCtrlHandlerW(_SVC_NAME, _ctrl_handler)
-    if not _svc_handle:
-        return
-
-    # Checkpoint 1 — dispatcher connected, about to import heavy libraries.
-    # wait_hint tells the SCM how long to wait before the next update.
-    _report_status(SERVICE_START_PENDING, wait_hint=60_000, checkpoint=1)
-
-    # Lazy import: torch + TensorFlow load transitively here.  This is the
-    # slow phase (30-60 s on cold start) and must happen after the first
-    # checkpoint so the SCM knows the service is making progress.
-    from audio_sentinel.sentinel_daemon import SentinelDaemon  # noqa: E402
-
-    # Checkpoint 2 — libraries loaded, about to initialise models and audio.
-    _report_status(SERVICE_START_PENDING, wait_hint=60_000, checkpoint=2)
-
-    os.chdir(_PROJECT_ROOT)
-    config_path = os.path.join(_PROJECT_ROOT, "audio_sentinel", "config", "config.yaml")
+    _dbg("_svc_main: entered")
 
     try:
+        _svc_handle = _advapi32.RegisterServiceCtrlHandlerW(_SVC_NAME, _ctrl_handler)
+        _dbg(f"_svc_main: RegisterServiceCtrlHandlerW -> {_svc_handle}")
+        if not _svc_handle:
+            err = _kernel32.GetLastError()
+            _dbg(f"_svc_main: RegisterServiceCtrlHandlerW failed, error={err}")
+            return
+
+        _report_status(SERVICE_START_PENDING, wait_hint=60_000, checkpoint=1)
+        _dbg("_svc_main: checkpoint 1 reported — importing SentinelDaemon")
+
+        # Lazy import: torch + TensorFlow load transitively here.
+        from audio_sentinel.sentinel_daemon import SentinelDaemon  # noqa: E402
+        _dbg("_svc_main: SentinelDaemon imported")
+
+        _report_status(SERVICE_START_PENDING, wait_hint=60_000, checkpoint=2)
+        _dbg("_svc_main: checkpoint 2 reported — initialising daemon")
+
+        os.chdir(_PROJECT_ROOT)
+        config_path = os.path.join(
+            _PROJECT_ROOT, "audio_sentinel", "config", "config.yaml"
+        )
+
         _daemon = SentinelDaemon(config_path=config_path)
+        _dbg("_svc_main: SentinelDaemon initialised — reporting SERVICE_RUNNING")
+
         _report_status(SERVICE_RUNNING)
-        _daemon.run()          # blocks until _daemon.stop() is called from _ctrl_handler
+        _dbg("_svc_main: SERVICE_RUNNING reported — entering run loop")
+
+        _daemon.run()
+        _dbg("_svc_main: run() returned cleanly")
+
+    except Exception:
+        _dbg(f"_svc_main: UNHANDLED EXCEPTION\n{traceback.format_exc()}")
     finally:
+        _dbg("_svc_main: reporting SERVICE_STOPPED")
         _report_status(SERVICE_STOPPED)
 
 
@@ -143,18 +179,23 @@ def _svc_main(argc: int, argv) -> None:
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    # Build the dispatch table: one named entry + NULL sentinel
+    _dbg(f"main: starting — PROJECT_ROOT={_PROJECT_ROOT}")
+
     table = (_SERVICE_TABLE_ENTRY * 2)()
     table[0].lpServiceName = _SVC_NAME
     table[0].lpServiceProc = _svc_main
 
+    _dbg("main: calling StartServiceCtrlDispatcherW")
     if not _advapi32.StartServiceCtrlDispatcherW(table):
         err = _kernel32.GetLastError()
+        _dbg(f"main: StartServiceCtrlDispatcherW failed, error={err}")
         sys.exit(
             f"StartServiceCtrlDispatcher failed (error {err}).\n"
             "This process must be started by the Windows SCM.\n"
             "Register it first with: scripts\\install-service.ps1"
         )
+
+    _dbg("main: StartServiceCtrlDispatcherW returned (service stopped)")
 
 
 if __name__ == "__main__":
