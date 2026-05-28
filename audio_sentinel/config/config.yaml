@@ -1,0 +1,48 @@
+daemon:
+  # Audio capture
+  sample_rate: 16000          # Hz — Silero VAD and YAMNet both expect 16kHz
+  chunk_ms: 32                # ms per audio chunk fed to VAD
+  yamnet_window_ms: 975       # ms — YAMNet expects ~975ms (~15600 samples @ 16kHz)
+  device: 26                # null = system default microphone
+
+  # VAD
+  vad_threshold: 0.5          # Silero confidence threshold (0.0–1.0)
+
+  # Classification
+  classifier_confidence_min: 0.02   # Ignore YAMNet labels below this confidence
+
+  # Logging
+  log_level: INFO             # DEBUG | INFO | WARNING | ERROR
+  log_file: logs/sentinel.log
+
+rules:
+  - name: child_voice_loud
+    description: "Triggers when a child's voice exceeds the dB threshold"
+    yamnet_classes:           # Match any of these YAMNet labels (substring match, case-insensitive)
+      - "child"
+      - "kid"
+      - "shout"
+      - "scream"
+      - "crying"
+    min_confidence: 0.10      # Per-rule confidence override
+    min_db: -20.0             # dBFS threshold (0 = max, -20 = fairly loud)
+    actions:
+      - type: log
+        level: WARNING
+        message: "Child voice detected at {db:.1f} dBFS (class={label}, conf={confidence:.2f})"
+
+      # Uncomment to also kill a process:
+      # - type: kill_process
+      #   process_name: "someapp.exe"
+      #   graceful: true
+
+  - name: loud_noise_any
+    description: "Generic loud noise catch-all"
+    yamnet_classes:
+      - ""                    # empty string matches everything
+    min_confidence: 0.0
+    min_db: -10.0             # Higher threshold — only very loud anything
+    actions:
+      - type: log
+        level: WARNING
+        message: "Loud noise detected: {label} at {db:.1f} dBFS (conf={confidence:.2f})"

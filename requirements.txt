@@ -1,0 +1,25 @@
+# Audio capture
+sounddevice==0.4.6
+numpy==1.26.4
+
+# VAD
+# Silero VAD via torch (ONNX runtime is lighter — see ONNX note in vad.py)
+torch==2.2.2
+torchaudio==2.2.2
+
+# Classification
+tensorflow==2.16.1        # YAMNet runs on TFLite / TF
+tensorflow-hub==0.16.1    # YAMNet model download
+
+# Config
+pyyaml==6.0.1
+
+# Logging / utils
+colorlog==6.8.2
+
+psutil
+setuptools<82
+
+# Testing
+pytest==8.1.1
+pytest-mock==3.14.0
