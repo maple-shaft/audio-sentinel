@@ -60,7 +60,7 @@ param(
     [string]$ConfigPath     = "",
     [string]$StartupType    = "auto",
     [string]$ServiceAccount = "LocalSystem",
-    [string]$ServicePassword = "",
+    [SecureString]$ServicePassword = $null,
     [switch]$Uninstall
 )
 
@@ -153,15 +153,18 @@ if ($ServiceAccount -eq "LocalSystem") {
         start= $StartupType `
         obj= LocalSystem
 } else {
-    if (-not $ServicePassword) {
+    if ($null -eq $ServicePassword -or $ServicePassword.Length -eq 0) {
         Abort "A -ServicePassword is required when using a named -ServiceAccount."
     }
+    $plainPassword = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto(
+        [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($ServicePassword)
+    )
     $createResult = sc.exe create $ServiceName `
         binPath= $binPath `
         DisplayName= $DisplayName `
         start= $StartupType `
         obj= $ServiceAccount `
-        password= $ServicePassword
+        password= $plainPassword
 }
 
 if ($LASTEXITCODE -ne 0) {
@@ -207,9 +210,9 @@ Write-Host "  Remove:  .\install-service.ps1 -Uninstall"
 Write-Host ""
 Write-Host "  MICROPHONE ACCESS CHECKLIST:" -ForegroundColor Yellow
 Write-Host "  [ ] Windows Audio service (audiosrv) is running"
-Write-Host "  [ ] Settings > Privacy & Security > Microphone toggle is ON"
+Write-Host "  [ ] Settings - Privacy and Security - Microphone toggle is ON"
 Write-Host "  [ ] 'Let desktop apps access your microphone' is ON"
 if ($ServiceAccount -ne "LocalSystem") {
-    Write-Host "  [ ] Account '$ServiceAccount' has 'Log on as a service' right (secpol.msc)"
+    Write-Host "  [ ] Account '$ServiceAccount' has 'Log on as a service' right secpol.msc"
 }
 Write-Host ""
