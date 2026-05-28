@@ -9,7 +9,7 @@ daemon:
   vad_threshold: 0.5          # Silero confidence threshold (0.0–1.0)
 
   # Classification
-  classifier_confidence_min: 0.02   # Ignore YAMNet labels below this confidence
+  classifier_confidence_min: 0.50   # Ignore YAMNet labels below this confidence
 
   # Logging
   log_level: INFO             # DEBUG | INFO | WARNING | ERROR
@@ -24,7 +24,9 @@ rules:
       - "shout"
       - "scream"
       - "crying"
-    min_confidence: 0.10      # Per-rule confidence override
+      - "Speech"
+      #- "Cough"
+    min_confidence: 0.60      # Per-rule confidence override
     min_db: -20.0             # dBFS threshold (0 = max, -20 = fairly loud)
     actions:
       - type: log
@@ -32,15 +34,15 @@ rules:
         message: "Child voice detected at {db:.1f} dBFS (class={label}, conf={confidence:.2f})"
 
       # Uncomment to also kill a process:
-      # - type: kill_process
-      #   process_name: "someapp.exe"
-      #   graceful: true
+      - type: kill_process
+        process_name: "RobloxPlayerBeta.exe"
+        graceful: true
 
   - name: loud_noise_any
     description: "Generic loud noise catch-all"
     yamnet_classes:
       - ""                    # empty string matches everything
-    min_confidence: 0.0
+    min_confidence: 0.50
     min_db: -10.0             # Higher threshold — only very loud anything
     actions:
       - type: log

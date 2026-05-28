@@ -21,7 +21,7 @@ _PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
-from audio_sentinel.__main__ import SentinelDaemon  # noqa: E402
+from audio_sentinel.sentinel_daemon import SentinelDaemon  # noqa: E402
 
 
 class AudioSentinelService(win32serviceutil.ServiceFramework):
