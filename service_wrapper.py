@@ -66,12 +66,23 @@ _advapi32.StartServiceCtrlDispatcherW.restype  = ctypes.wintypes.BOOL
 _advapi32.StartServiceCtrlDispatcherW.argtypes = [ctypes.POINTER(_SERVICE_TABLE_ENTRY)]
 
 # ---------------------------------------------------------------------------
-# Project root — resolved at module load; sys.path updated so lazy imports work
+# Project root and venv site-packages — both must be on sys.path before any
+# application imports.  When the SCM launches pythonw.exe directly (not via
+# the activate script), Python's automatic venv detection is unreliable and
+# .pth files inside site-packages (required by torch / tensorflow) are only
+# processed when site.addsitedir() is called — a raw sys.path append is not
+# enough.
 # ---------------------------------------------------------------------------
+
+import site as _site
 
 _PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
+
+_VENV_SITE = os.path.join(_PROJECT_ROOT, ".venv", "Lib", "site-packages")
+if os.path.isdir(_VENV_SITE):
+    _site.addsitedir(_VENV_SITE)   # adds dir + processes all .pth files
 
 # SentinelDaemon is NOT imported here.  torch + TensorFlow load transitively
 # through it and can take 30-60 s on a cold start — long enough to exceed the
@@ -180,6 +191,8 @@ def _svc_main(argc: int, argv) -> None:
 
 def main() -> None:
     _dbg(f"main: starting — PROJECT_ROOT={_PROJECT_ROOT}")
+    _dbg(f"main: venv site-packages present={os.path.isdir(_VENV_SITE)}")
+    _dbg(f"main: sys.path={sys.path}")
 
     table = (_SERVICE_TABLE_ENTRY * 2)()
     table[0].lpServiceName = _SVC_NAME
