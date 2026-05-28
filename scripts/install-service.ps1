@@ -125,15 +125,19 @@ if (-not (Test-Path $ConfigPath)) {
 # Paths with spaces must be quoted inside the binPath value.
 # ---------------------------------------------------------------------------
 
-$binPath = '"' + $venvPython + '" -m audio_sentinel --config "' + $ConfigPath + '"'
+$serviceWrapper = Join-Path $InstallDir "service_wrapper.py"
+if (-not (Test-Path $serviceWrapper)) {
+    Abort "service_wrapper.py not found at '$serviceWrapper'."
+}
+$binPath = '"' + $venvPython + '" "' + $serviceWrapper + '"'
 
 # ---------------------------------------------------------------------------
 # Remove existing service if present
 # ---------------------------------------------------------------------------
 
-$existing = sc.exe query $ServiceName 2>&1
+sc.exe query $ServiceName 2>$null | Out-Null
 if ($LASTEXITCODE -eq 0) {
-    Write-Step "Existing service found — stopping and removing before re-creating..."
+    Write-Step "Existing service found stopping and removing before re-creating..."
     sc.exe stop $ServiceName 2>$null | Out-Null
     Start-Sleep -Seconds 2
     sc.exe delete $ServiceName | Out-Null
@@ -204,15 +208,12 @@ Write-Host "================================================================" -F
 Write-Host "  Service '$ServiceName' registered successfully." -ForegroundColor Green
 Write-Host "================================================================" -ForegroundColor Green
 Write-Host ""
-Write-Host "  Start :  Start-Service $ServiceName"
-Write-Host "  Stop  :  Stop-Service $ServiceName"
+Write-Host "  Start :  Start-Service '$ServiceName'"
+Write-Host "  Stop  :  Stop-Service '$ServiceName'"
 Write-Host "  Remove:  .\install-service.ps1 -Uninstall"
 Write-Host ""
 Write-Host "  MICROPHONE ACCESS CHECKLIST:" -ForegroundColor Yellow
-Write-Host "  [ ] Windows Audio service (audiosrv) is running"
-Write-Host "  [ ] Settings - Privacy and Security - Microphone toggle is ON"
-Write-Host "  [ ] 'Let desktop apps access your microphone' is ON"
-if ($ServiceAccount -ne "LocalSystem") {
-    Write-Host "  [ ] Account '$ServiceAccount' has 'Log on as a service' right secpol.msc"
-}
+Write-Host "  [ ] Windows Audio service audiosrv is running"
+Write-Host "  [ ] Settings - Privacy and Security Microphone toggle is ON"
+Write-Host "  [ ] Let desktop apps access your microphone is ON"
 Write-Host ""

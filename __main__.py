@@ -184,7 +184,7 @@ class SentinelDaemon:
             # --- Rule engine ------------------------------------------------
             for result in results:
                 if result.confidence > 0.01:
-                    logger.info(
+                    logger.debug(
                         "Detected: %-40s  conf=%.2f  dBFS=%.1f",
                         result.label,
                         result.confidence,
@@ -202,8 +202,11 @@ class SentinelDaemon:
         logger.info("audio-sentinel stopped cleanly.")
 
     def _register_signal_handlers(self) -> None:
-        signal.signal(signal.SIGINT, self._handle_signal)
-        signal.signal(signal.SIGTERM, self._handle_signal)
+        try:
+            signal.signal(signal.SIGINT, self._handle_signal)
+            signal.signal(signal.SIGTERM, self._handle_signal)
+        except ValueError:
+            pass  # Not the main thread — e.g. running inside a pywin32 service
 
     def _handle_signal(self, signum: int, frame) -> None:
         logger.info("Signal %d received — stopping.", signum)
