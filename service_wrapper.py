@@ -64,14 +64,17 @@ _advapi32.StartServiceCtrlDispatcherW.restype  = ctypes.wintypes.BOOL
 _advapi32.StartServiceCtrlDispatcherW.argtypes = [ctypes.POINTER(_SERVICE_TABLE_ENTRY)]
 
 # ---------------------------------------------------------------------------
-# Project root — must be resolved before any relative imports or chdir calls
+# Project root — resolved at module load; sys.path updated so lazy imports work
 # ---------------------------------------------------------------------------
 
 _PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
-from audio_sentinel.sentinel_daemon import SentinelDaemon  # noqa: E402
+# SentinelDaemon is NOT imported here.  torch + TensorFlow load transitively
+# through it and can take 30-60 s on a cold start — long enough to exceed the
+# SCM dispatcher timeout before StartServiceCtrlDispatcher is even called.
+# The import is deferred to inside _svc_main, after the first checkpoint.
 
 # ---------------------------------------------------------------------------
 # Service state (module-level keeps ctypes callbacks alive for the GC)
@@ -79,7 +82,7 @@ from audio_sentinel.sentinel_daemon import SentinelDaemon  # noqa: E402
 
 _SVC_NAME = "AudioSentinel"
 _svc_handle: ctypes.wintypes.HANDLE | None = None
-_daemon: SentinelDaemon | None = None
+_daemon = None  # type: ignore[assignment]  # SentinelDaemon, imported lazily
 
 
 def _report_status(state: int, wait_hint: int = 0, checkpoint: int = 0) -> None:
@@ -112,7 +115,17 @@ def _svc_main(argc: int, argv) -> None:
     if not _svc_handle:
         return
 
-    _report_status(SERVICE_START_PENDING, wait_hint=10_000, checkpoint=1)
+    # Checkpoint 1 — dispatcher connected, about to import heavy libraries.
+    # wait_hint tells the SCM how long to wait before the next update.
+    _report_status(SERVICE_START_PENDING, wait_hint=60_000, checkpoint=1)
+
+    # Lazy import: torch + TensorFlow load transitively here.  This is the
+    # slow phase (30-60 s on cold start) and must happen after the first
+    # checkpoint so the SCM knows the service is making progress.
+    from audio_sentinel.sentinel_daemon import SentinelDaemon  # noqa: E402
+
+    # Checkpoint 2 — libraries loaded, about to initialise models and audio.
+    _report_status(SERVICE_START_PENDING, wait_hint=60_000, checkpoint=2)
 
     os.chdir(_PROJECT_ROOT)
     config_path = os.path.join(_PROJECT_ROOT, "audio_sentinel", "config", "config.yaml")
