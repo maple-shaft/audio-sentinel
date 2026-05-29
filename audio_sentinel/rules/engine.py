@@ -43,6 +43,8 @@ class RuleEngine:
         Fires actions for every rule that matches.
         """
         for rule in self._rules:
+            logger.debug("Evaluating rule '%s' (min_conf=%.2f, min_db=%.1f, classes=%s)...",
+                        rule.name, rule.min_confidence, rule.min_db, rule.yamnet_classes)
             if self._matches(rule, result):
                 context = self._build_context(rule, result)
                 logger.debug("Rule '%s' matched. Dispatching actions.", rule.name)
@@ -66,16 +68,24 @@ class RuleEngine:
     def _matches(rule: RuleConfig, result: ClassificationResult) -> bool:
         # 1. Confidence gate
         if result.confidence < rule.min_confidence:
+            logger.debug("Rule '%s' rejected by confidence gate: %.2f < %.2f",
+                        rule.name, result.confidence, rule.min_confidence)
             return False
 
         # 2. dB gate
         if result.db < rule.min_db:
+            logger.debug("Rule '%s' rejected by dB gate: %.1f < %.1f",
+                        rule.name, result.db, rule.min_db)
             return False
 
         # 3. Class label gate — substring match against any configured class
         label_lower = result.label.lower()
+        logger.debug("Rule '%s' checking class label '%s' against patterns %s",
+                    rule.name, result.label, rule.yamnet_classes)
         for pattern in rule.yamnet_classes:
-            if pattern == "" or pattern in label_lower:
+            if pattern == "" or pattern.lower() in label_lower:
+                logger.info("Rule '%s' accepted by class label gate: pattern '%s' matches label '%s'",
+                            rule.name, pattern, result.label)
                 return True
 
         return False
