@@ -15,6 +15,17 @@ import os
 import sys
 import traceback
 
+# pythonw.exe (used by SCM) has no console, so all three stdio handles are None.
+# Any library that calls sys.stderr.write() (TensorFlow, absl-py, logging, etc.)
+# will raise AttributeError before we can catch it.  Redirect to os.devnull
+# before any non-stdlib import runs.
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, "w", encoding="utf-8")
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w", encoding="utf-8")
+if sys.stdin is None:
+    sys.stdin = open(os.devnull, "r", encoding="utf-8")
+
 # ---------------------------------------------------------------------------
 # Windows service API — types, structures, and constants
 # ---------------------------------------------------------------------------
